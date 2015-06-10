@@ -2,6 +2,8 @@
 #define MASCHINE_H
 
 #include <iostream>
+#include <iomanip>
+#include <algorithm>
 #include <cstdint>
 
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
@@ -10,14 +12,18 @@
 #include <arpa/inet.h>
 #endif
 
-#define MEM_SZ    65536
-#define NUM_REGS  32
-#define PC_INDEX  1
-#define SP_INDEX  2
+#define MEM_SZ        65536
+#define NUM_REGS      32
+#define PC_INDEX      1
+#define SP_INDEX      2
+#define FLAGS_INDEX   30
+#define ZERO_FLAG     0x4
+#define SIGN_FLAG     0x8
+#define OVERFLOW_FLAG 0x10
 
-#define DEBUG_MSG 1
+#define DEBUG_MSG     1
 
-#define pow2(a) (0x1LL << a)
+#define pow2(a) (0x1LL << (a))
 #define size_mask(a) (pow2(a) - 1)
 
 using namespace std;
@@ -56,20 +62,32 @@ enum opcode_t {
   INTERRUPT,
 };
 
-void start_vm();
+class LittleMaschine {
+private:
+  bool      halted;
+  bool      debugMsg;
+  uint8_t   mainMemory[MEM_SZ];
+  uint32_t  registers[NUM_REGS];
 
-uint8_t get_actual_size(isize_t sz);
-uint32_t get_value(uint32_t &pc, uint8_t regAddress, uint8_t size, amode_t mode, bool ptr);
-uint8_t* get_dst(uint32_t& pc, uint8_t regAddress, amode_t mode, bool ptr);
+  uint8_t   get_actual_size(isize_t sz);
+  uint32_t  get_value(uint32_t &pc, uint8_t regAddress, uint8_t size, amode_t mode, bool ptr);
+  uint8_t*  get_dst(uint32_t& pc, uint8_t regAddress, amode_t mode, bool ptr);
 
-void set_dst(uint8_t* dst, uint8_t size, uint32_t val);
+  uint32_t  sign_extend(uint32_t val, uint8_t sz);
+  void      set_dst(uint8_t* dst, uint8_t size, uint32_t val);
 
-bool has_src(opcode_t opcode);
-bool has_dst(opcode_t opcode);
+  bool      has_src(opcode_t opcode);
+  bool      has_dst(opcode_t opcode);
+public:
+  LittleMaschine(bool debugMsg = false);
 
-void print_registers();
+  void start_vm();
 
-uint8_t   mainMemory[MEM_SZ] = {0};
-uint32_t  registers[NUM_REGS] = {0};
+  void set_mem_val(uint32_t address, uint8_t val);
+  void set_register_val(uint8_t address, uint32_t val);
+
+  void mem_dump(uint32_t nBytes = MEM_SZ);
+  void print_registers();
+};
 
 #endif
