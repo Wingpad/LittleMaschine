@@ -1,99 +1,145 @@
-/*
- * To change this license header, choose License Headers in Project Properties.
- * To change this template file, choose Tools | Templates
- * and open the template in the editor.
+/**
+ * Grammar for the LVM Machine`
  */
-
 grammar LittleMaschine;
 
 program
-    : (statement (EOL | EOF))+
-    ;
+  : ((label EOL?)* statement (EOL | EOF))+
+  ;
+
+label
+  : Identifier Colon
+  ;
 
 statement
-    : singleOperandInstr
-    | dualOperandInstr
-    ;
+  : singleOperandInstr
+  | dualOperandInstr
+  | NoOperandOpcode
+  ;
 
 singleOperandInstr
-    : SingleOperandOpcode (Period SizeSpecifier)? operand
-    ;
+  : SingleOperandOpcode (Period SizeSpecifier)? operand
+  ;
 
 dualOperandInstr
-    : DualOperandOpcode (Period SizeSpecifier)? operand Comma operand
-    ;
+  : DualOperandOpcode (Period SizeSpecifier)? operand Comma operand
+  ;
 
 operand
-    : Register
-    | Identifier
-    | Literal
-    | addressExpression
-    ;
+  : Register
+  | Identifier
+  | Literal
+  | addressExpression
+  ;
 
 addressExpression
-    : Pointer? LBracket Literal RBracket
-    ;
+  : Pointer? LBracket expression RBracket
+  ;
+
+expression
+  : operand
+  | expression (Add | Subtract | Multiply) operand
+  ;
 
 LBracket: '[';
 RBracket: ']';
-Add: '+';
-Multiply: '*';
+Add:      '+';
 Subtract: '-';
-Period: '.';
-Comma: ',';
-Dollar: '$';
-
-Literal
-    : Hex
-    | Binary
-    | Integer
-    | String
-    | Char
-    ;
-
-Integer: [1-9] [0-9]*;
-HexDigit: [0-9a-fA-F] ;
-Hex: '0' [xX] HexDigit+ ;
-Binary: '0' [bB] [10]+ ;
-String : '"' ( ~'"' | '\\' '"' )* '"' ;
-Char : '\'' ( ~'\'' | '\\' '\'' ) '\'' ;
-
-Pointer
-    : 'ptr'
-    | '^'
-    ;
+Multiply: '*';
+Colon:    ':';
+Period:   '.';
+Comma:    ',';
+Dollar:   '$';
 
 SizeSpecifier
-    : 'b'
-    | 'w'
-    | 'dw'
-    ;
+  : 'dw'
+  | [wb]
+  ;
+
+Literal
+  : Hex
+  | Binary
+  | Octal
+  | Integer
+  | String
+  | Char
+  ;
+
+Integer: [1-9] [0-9]* ;
+HexDigit: [0-9a-fA-F] ;
+OctalDigit: [0-7] ;
+Hex: '0' [xX] HexDigit+ ;
+Binary: '0' [bB] [10]+ ;
+Octal: '0' OctalDigit+ ;
+String: '"' ( ~'"' | '\\' '"' )* '"' ;
+Char: '\'' ( ~'\'' | '\\' ~[\s] ) '\'' ;
+
+Pointer
+  : 'ptr'
+  | '^'
+  ;
 
 DualOperandOpcode
-    : 'add'
-    | 'mov'
-    ;
+  : 'add'
+  | 'sub'
+  | 'mul'
+  | 'div'
+  | 'mod'
+  | 'shl'
+  | 'shr'
+  | 'mov'
+  | 'xchg'
+  | 'and'
+  | 'or'
+  | 'xor'
+  | 'nand'
+  | 'nor'
+  | 'xnor'
+  | 'cmp'
+  | 'lea'
+  ;
 
 SingleOperandOpcode
-    : 'push'
-    ;
+  : 'hlt'
+  | 'pop'
+  | 'push'
+  | 'inc'
+  | 'dec'
+  | 'not'
+  | 'j'
+  | 'jz'
+  | 'jnz'
+  | 'jg'
+  | 'jge'
+  | 'jl'
+  | 'jle'
+  | 'call'
+  | 'int'
+  ;
+
+NoOperandOpcode
+  : 'hlt'
+  | 'nop'
+  | 'clr'
+  | 'ret'
+  ;
 
 Register
-    : Dollar [a-zA-Z0-9]+
-    ;
+  : Dollar [a-zA-Z0-9]+
+  ;
 
 Identifier
-    : [_a-zA-Z] [_a-zA-Z0-9]*
-    ;
+  : [_a-zA-Z] [_a-zA-Z0-9]*
+  ;
 
 EOL
-    : '\r'? '\n'
-    ;
+  : '\r'? '\n'
+  ;
 
 Comment
-    : ';' ~[\r\n]* -> skip
-    ;
+  : ';' ~[\r\n]* -> skip
+  ;
 
 Whitespace
-    : [ \t] -> skip
-    ;
+  : [ \t] -> skip
+  ;
