@@ -22,7 +22,7 @@ int main (int argc, const char* argv[]) {
   mainMemory[7] = 0x00;
   mainMemory[8] = 0x70;
 
-  registers[2] = ntohl(0x00001000);
+  registers[2] = ntohl(0x0000F000);
   registers[3] = ntohl(0x10001001);
 
   start_vm();
@@ -49,8 +49,9 @@ void start_vm() {
     bool      ptr2    = instr & 0x01;
     // Now that we're done "decoding" the instruction, increment pc & parse it
     pc += 3;
-    uint32_t  srcVal, dstVal;
-    uint8_t *dst;
+    uint32_t  srcVal  = 0;
+    uint32_t  dstVal  = 0;
+    uint8_t   *dst    = NULL;
 
     if (has_src(opcode)) {
       srcVal  = get_value(pc, srcReg, size, a1m, ptr1);
@@ -60,14 +61,18 @@ void start_vm() {
       if (a2m == IMM_MODE) {
         cerr << "Instruction cannot have an immediate destination.";
         break;
+      } else if (a2m == REG_MODE && dstReg == 0) {
+        dst     = NULL;
+        dstVal  = 0;
+      } else {
+        dst     = get_dst(pc, dstReg, a2m, ptr2);
+        dstVal  = htonl(*((uint32_t*)dst)) & size_mask(size);
       }
-      dst     = get_dst(pc, dstReg, a2m, ptr2);
-      dstVal  = htonl(*((uint32_t*)dst)) & size_mask(size);
     }
 
 #ifdef DEBUG_MSG
     cout << endl << "Machine State:" << endl;
-    cout << "PC: " << hex << pc << endl;
+    cout << "PC: " << hex << ntohl(registers[PC_INDEX]) << endl;
     cout << "Instr: " << instr << endl;
     cout << "Opcode: " << (int) opcode << endl;
     cout << "A1M/A2M: " << (int) a1m << "/" << (int) a2m << endl;
@@ -88,7 +93,7 @@ void start_vm() {
         break;
       case PUSH: {
         uint32_t sp = ntohl(registers[SP_INDEX]);
-        set_dst(&mainMemory[sp], size, srcVal);
+        set_dst(&mainMemory[sp], size, ntohl(srcVal));
         registers[SP_INDEX] = htonl(sp + (size / 8));
         break;
       }
@@ -105,6 +110,9 @@ void start_vm() {
         } else {
           set_dst(dst, size, srcVal + dstVal);
         }
+        break;
+      case MOV:
+        set_dst(dst, size, srcVal);
         break;
     }
 
@@ -248,7 +256,9 @@ uint8_t* get_dst(uint32_t& pc, uint8_t regAddress, amode_t mode, bool ptr) {
 }
 
 void set_dst(uint8_t* dst, uint8_t size, uint32_t val) {
-  val &= size_mask(size);
-  val |= ntohl(*((uint32_t*)dst)) & ((size_mask(32 - size)) << size);
-  *((uint32_t*)dst) = htonl(val);
+  if (dst != NULL) {
+    val &= size_mask(size);
+    val |= ntohl(*((uint32_t*)dst)) & ((size_mask((32 - size))) << size);
+    *((uint32_t*)dst) = htonl(val);
+  }
 }
