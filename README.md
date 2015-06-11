@@ -23,6 +23,7 @@ Little Machine aims to be a small VM with an x86/MIPS-like architecture. It is a
     clr       ----  (xor $X, $X)
     mov       0x0A
     xchg      0x0B
+    lea       0x1E  (Out of Numerical Order!)
 
 ###Bitwise Logic:
     and       0x0C
@@ -38,8 +39,8 @@ Little Machine aims to be a small VM with an x86/MIPS-like architecture. It is a
 
 ###Flow Control:
     j         0x14
-    jz/je     0x15
-    jnz/jne   0x16
+    je        0x15
+    jne       0x16
     jg/jnle   0x17
     jge/jnl   0x18
     jl/jnge   0x19
@@ -47,10 +48,10 @@ Little Machine aims to be a small VM with an x86/MIPS-like architecture. It is a
 
     nop       ----  (xor $0, $0)
 
-    call      ----  (push.dw $pc)
-    ret       0x1B
+    call      0x1B  (push.dw $pc)
+    ret       0x1C
 
-    int       0x1C
+    int       0x1D
 
     hlt       0x00
 
@@ -73,12 +74,9 @@ Little Machine aims to be a small VM with an x86/MIPS-like architecture. It is a
     dword   dw  32
 
 ##Flags:
-    0       CF  Carry Flag
-    1       PF  Parity Flag
-    2       ZF  Zero Flag
-    3       SF  Sign Flag
-    4       OF  Overflow Flag
-    5-7     NU  Not Used
+    0       EF  Equals To Flag
+    1       GF  Greater Than Flag
+    2-31    NU  Currently Unused
 
 ##Instruction Format:
     7   6   5   4   3   2   1   0   7   6   5   4   3   2   1   0   7   6   5   4   3   2   1   0

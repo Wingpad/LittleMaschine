@@ -52,14 +52,16 @@ enum opcode_t {
   NOT,
   CMP,
   J,
-  JZ,
-  JNZ,
+  JE,
+  JNE,
   JG,
   JGE,
   JL,
   JLE,
+  CALL,
   RET,
   INTERRUPT,
+  LEA,
 };
 
 class LittleMaschine {

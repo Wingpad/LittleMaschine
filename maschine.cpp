@@ -72,9 +72,6 @@ void LittleMaschine::start_vm() {
     uint8_t   signOp  = instr & 0x04;
     bool      ptr1    = instr & 0x02;
     bool      ptr2    = instr & 0x01;
-    bool      zeroFlg = flags & ZERO_FLAG;
-    bool      signFlg = flags & SIGN_FLAG;
-    bool      ofloFlg = flags & OVERFLOW_FLAG;
     // Now that we're done "decoding" the instruction, increment pc & parse it
     pc += 3;
     uint32_t  srcVal  = 0;
@@ -193,36 +190,47 @@ void LittleMaschine::start_vm() {
       case J:
         pc = dstVal;
         break;
-      case JZ:
-        if (zeroFlg) {
+      case JE:
+        if (flags & 0x1) {
           pc = dstVal;
         }
         break;
-      case JNZ:
-        if (!zeroFlg) {
+      case JNE:
+        if (!(flags & 0x1)) {
           pc = dstVal;
         }
         break;
       case JG:
-        if (!zeroFlg && (signFlg == ofloFlg)) {
+        if (flags & 0x2) {
           pc = dstVal;
         }
         break;
       case JGE:
-        if (signFlg == ofloFlg) {
+        if (flags & 0x3) {
           pc = dstVal;
         }
         break;
       case JL:
-        if (signFlg != ofloFlg) {
+        if (!(flags & 0x3)) {
           pc = dstVal;
         }
         break;
       case JLE:
-        if (!zeroFlg && (signFlg == ofloFlg)) {
+        if (!(flags & 0x2)) {
           pc = dstVal;
         }
         break;
+      case CALL: {
+        // Grab the SP
+        uint32_t sp = ntohl(registers[SP_INDEX]);
+        // Push it the PC onto the Stack
+        set_dst(&mainMemory[sp], 4, ntohl(pc));
+        // Adjust the SP
+        registers[SP_INDEX] = htonl(sp + 4);
+        // Then move the PC to the destination
+        pc = dstVal;
+        break;
+      }
       case RET: {
         uint32_t sp = ntohl(registers[SP_INDEX]) - 4;
         pc = *((uint32_t*) (&mainMemory[sp]));
@@ -230,6 +238,9 @@ void LittleMaschine::start_vm() {
         break;
       }
       case CMP:
+        registers[FLAGS_INDEX] = ((srcVal == dstVal) | (srcVal > dstVal) << 1);
+        break;
+      case LEA:
       case INTERRUPT:
       default:
         cerr << "Unsupported Instruction." << endl;
@@ -280,12 +291,14 @@ bool LittleMaschine::has_src(opcode_t opcode) {
     case POP:
     case NOT:
     case J:
-    case JZ:
-    case JNZ:
+    case JE:
+    case JNE:
     case JG:
     case JGE:
     case JL:
     case JLE:
+    case RET:
+    case CALL:
     case INTERRUPT:
       result = false;
       break;

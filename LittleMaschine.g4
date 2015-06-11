@@ -14,7 +14,11 @@ label
 statement
   : singleOperandInstr
   | dualOperandInstr
-  | NoOperandOpcode
+  | noOperandInstr
+  ;
+
+noOperandInstr
+  : NoOperandOpcode
   ;
 
 singleOperandInstr
@@ -100,9 +104,9 @@ DualOperandOpcode
   ;
 
 SingleOperandOpcode
-  : 'hlt'
-  | 'pop'
+  : 'pop'
   | 'push'
+  | 'clr'
   | 'inc'
   | 'dec'
   | 'not'
@@ -120,7 +124,6 @@ SingleOperandOpcode
 NoOperandOpcode
   : 'hlt'
   | 'nop'
-  | 'clr'
   | 'ret'
   ;
 
