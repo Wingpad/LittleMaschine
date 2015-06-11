@@ -86,6 +86,10 @@ public class LittleMaschineAssembler extends LittleMaschineBaseVisitor<Object> {
     private LittleMaschineOpcode mOpcode;
     private ArrayList<LittleMaschineOperand> mOperands;
 
+    public LittleMaschineStatement() {
+      mOperands = new ArrayList<LittleMaschineOperand>();
+    }
+
     public void setOpcode(String opcode) {
       mOpcode = LittleMaschineOpcode.valueOf(opcode.toUpperCase());
     }
@@ -111,8 +115,8 @@ public class LittleMaschineAssembler extends LittleMaschineBaseVisitor<Object> {
 
     PUSH(0x01), POP(0x02), ADD(0x03), SUB(0x04), MUL(0x05), DIV(0x06), MOD(0x07),
       SHL(0x08), SHR(0x09), MOV(0x0A), XCHG(0x0B), AND(0x0C), OR(0x0D), XOR(0x0E),
-      NAND(0x0F), NOR(0x10), XNOR(0x11), NOT(0x12), CMP(0x13), J(0x14), JZ(0x15),
-      JNZ(0x16), JG(0x17), JGE(0x18), JL(0x19), JLE(0x1A), CALL(0x1B), RET(0x1C),
+      NAND(0x0F), NOR(0x10), XNOR(0x11), NOT(0x12), CMP(0x13), J(0x14), JE(0x15),
+      JNE(0x16), JG(0x17), JGE(0x18), JL(0x19), JLE(0x1A), CALL(0x1B), RET(0x1C),
       INT(0x1D), LEA(0x1E), HLT(0x00),
     INC(0xFF), DEC(0xFF), CLR(0xFF), NOP(0xFF);
 
