@@ -1,5 +1,5 @@
 /**
- * Grammar for the LVM Machine`
+ * Grammar for the LVM Machine
  */
 grammar LittleMaschine;
 
@@ -30,9 +30,10 @@ dualOperandInstr
   ;
 
 operand
-  : Register
-  | Identifier
-  | Literal
+  : ( Register
+    | Identifier
+    | Literal
+    )
   | addressExpression
   ;
 

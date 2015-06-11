@@ -60,7 +60,6 @@ void LittleMaschine::start_vm() {
   while(!halted) {
     // We are first and foremost a little endian architecture, htonl provides
     //  a pretty way to convert to little endianess when needed
-    uint32_t  pc      = ntohl(registers[PC_INDEX]);
     uint32_t  flags   = ntohl(registers[FLAGS_INDEX]);
     uint32_t  instr   = htonl(*((uint32_t*) &mainMemory[pc])) >> 8;
     opcode_t  opcode  = (opcode_t)((instr >> 19) & 0x1F);
@@ -80,7 +79,8 @@ void LittleMaschine::start_vm() {
     uint8_t   *src    = NULL;
 
     if (has_src(opcode)) {
-      srcVal  = get_value(pc, srcReg, size, a1m, ptr1);
+      src     = get_ptr(srcReg, a1m, ptr1, size);
+      srcVal  = htonl(*((uint32_t*)src)) & size_mask(size);
 
       if (signOp) {
         srcVal = sign_extend(srcVal, size);
@@ -95,7 +95,7 @@ void LittleMaschine::start_vm() {
         dst     = NULL;
         dstVal  = 0;
       } else {
-        dst     = get_dst(pc, dstReg, a2m, ptr2);
+        dst     = get_ptr(dstReg, a2m, ptr2);
         dstVal  = htonl(*((uint32_t*)dst)) & size_mask(size);
       }
 
@@ -106,7 +106,7 @@ void LittleMaschine::start_vm() {
 
     if (debugMsg) {
       cout << endl << "Machine State:" << endl;
-      cout << "PC: " << hex << ntohl(registers[PC_INDEX]) << endl;
+      cout << "PC: " << hex << pc << endl;
       cout << "Instr: " << instr << endl;
       cout << "Opcode: " << (int) opcode << endl;
       cout << "A1M/A2M: " << (int) a1m << "/" << (int) a2m << endl;
@@ -127,65 +127,65 @@ void LittleMaschine::start_vm() {
         break;
       case PUSH: {
         uint32_t sp = ntohl(registers[SP_INDEX]);
-        set_dst(&mainMemory[sp], size, ntohl(srcVal));
+        set_ptr(&mainMemory[sp], size, ntohl(srcVal));
         registers[SP_INDEX] = htonl(sp + (size / 8));
         break;
       }
       case POP: {
         uint32_t sp = ntohl(registers[SP_INDEX]);
         sp -= (size / 8);
-        set_dst(dst, size, *((uint32_t*) (&mainMemory[sp])));
+        set_ptr(dst, size, *((uint32_t*) (&mainMemory[sp])));
         registers[SP_INDEX] = htonl(sp);
         break;
       }
       case ADD:
-        set_dst(dst, size, srcVal + dstVal);
+        set_ptr(dst, size, srcVal + dstVal);
         break;
       case SUB:
-        set_dst(dst, size, srcVal - dstVal);
+        set_ptr(dst, size, srcVal - dstVal);
         break;
       case MUL:
-        set_dst(dst, size, srcVal * dstVal);
+        set_ptr(dst, size, srcVal * dstVal);
         break;
       case DIV:
-        set_dst(dst, size, srcVal / dstVal);
+        set_ptr(dst, size, srcVal / dstVal);
         break;
       case MOD:
-        set_dst(dst, size, srcVal % dstVal);
+        set_ptr(dst, size, srcVal % dstVal);
         break;
       case SHL:
-        set_dst(dst, size, srcVal << dstVal);
+        set_ptr(dst, size, srcVal << dstVal);
         break;
       case SHR:
-        set_dst(dst, size, srcVal >> dstVal);
+        set_ptr(dst, size, srcVal >> dstVal);
         break;
       case MOV:
-        set_dst(dst, size, srcVal);
+        set_ptr(dst, size, srcVal);
         break;
       case XCHG:
-        set_dst(dst, size, srcVal);
-        set_dst(src, size, dstVal);
+        set_ptr(dst, size, srcVal);
+        set_ptr(src, size, dstVal);
         break;
       case AND:
-        set_dst(dst, size, (srcVal & dstVal));
+        set_ptr(dst, size, (srcVal & dstVal));
         break;
       case OR:
-        set_dst(dst, size, (srcVal | dstVal));
+        set_ptr(dst, size, (srcVal | dstVal));
         break;
       case XOR:
-        set_dst(dst, size, (srcVal ^ dstVal));
+        set_ptr(dst, size, (srcVal ^ dstVal));
         break;
       case NAND:
-        set_dst(dst, size, ~(srcVal & dstVal));
+        set_ptr(dst, size, ~(srcVal & dstVal));
         break;
       case NOR:
-        set_dst(dst, size, ~(srcVal | dstVal));
+        set_ptr(dst, size, ~(srcVal | dstVal));
         break;
       case XNOR:
-        set_dst(dst, size, ~(srcVal ^ dstVal));
+        set_ptr(dst, size, ~(srcVal ^ dstVal));
         break;
       case NOT:
-        set_dst(dst, size, ~dstVal);
+        set_ptr(dst, size, ~dstVal);
         break;
       case J:
         pc = dstVal;
@@ -224,7 +224,7 @@ void LittleMaschine::start_vm() {
         // Grab the SP
         uint32_t sp = ntohl(registers[SP_INDEX]);
         // Push it the PC onto the Stack
-        set_dst(&mainMemory[sp], 4, ntohl(pc));
+        set_ptr(&mainMemory[sp], 4, ntohl(pc));
         // Adjust the SP
         registers[SP_INDEX] = htonl(sp + 4);
         // Then move the PC to the destination
@@ -246,8 +246,6 @@ void LittleMaschine::start_vm() {
         cerr << "Unsupported Instruction." << endl;
         break;
     }
-
-    registers[PC_INDEX] = htonl(pc);
   }
 }
 
@@ -345,42 +343,7 @@ uint8_t LittleMaschine::get_actual_size(isize_t sz) {
   return size;
 }
 
-uint32_t LittleMaschine::get_value(uint32_t &pc, uint8_t regAddress, uint8_t size, amode_t mode, bool ptr) {
-  uint32_t value;
-
-  switch(mode) {
-    case REG_MODE:
-      // V = R[Rg]
-      value = registers[regAddress];
-      break;
-    case IMM_MODE:
-      // V = I
-      value = *((uint32_t*) &mainMemory[pc]);
-      // Increment PC based on what we're reading
-      pc += (size / 8);
-      break;
-    case ABS_MODE:
-      // TODO Check if ntohl is needed!
-      // V = A
-      value = ntohl(*((uint32_t*) &mainMemory[pc]));
-      // V = M[A]
-      value &= 0xFFFF;
-      value = *((uint32_t*) &mainMemory[value]);
-      // Increment PC to account for Address
-      pc += 4;
-      break;
-  }
-
-  if (ptr) {
-    // V = *M[A]
-    value &= 0xFFFF;
-    value = *((uint32_t*) &mainMemory[value]);
-  }
-
-  return htonl(value) & size_mask(size);
-}
-
-uint8_t* LittleMaschine::get_dst(uint32_t& pc, uint8_t regAddress, amode_t mode, bool ptr) {
+uint8_t* LittleMaschine::get_ptr(uint8_t regAddress, amode_t mode, bool ptr, uint8_t size) {
   uint32_t value;
   uint8_t* address = NULL;
 
@@ -389,8 +352,14 @@ uint8_t* LittleMaschine::get_dst(uint32_t& pc, uint8_t regAddress, amode_t mode,
       // Val := &R[RegNum]
       address = (uint8_t*) (&registers[regAddress]);
       break;
+    case IMM_MODE:
+      // Val := PC
+      address = &mainMemory[pc];
+      // Increment PC based on what we're reading
+      pc += (size / 8);
+      break;
     case ABS_MODE:
-      // V := *PC
+      // Val := *PC
       value = ntohl(*((uint32_t*) &mainMemory[pc]));
       // Address := &M[Val]
       address = (uint8_t*) (&mainMemory[value & 0xFFFF]);
@@ -409,7 +378,7 @@ uint8_t* LittleMaschine::get_dst(uint32_t& pc, uint8_t regAddress, amode_t mode,
   return address;
 }
 
-void LittleMaschine::set_dst(uint8_t* dst, uint8_t size, uint32_t val) {
+void LittleMaschine::set_ptr(uint8_t* dst, uint8_t size, uint32_t val) {
   if (dst != NULL) {
     val &= size_mask(size);
     val |= ntohl(*((uint32_t*)dst)) & ((size_mask(32 - size)) << size);

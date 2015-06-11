@@ -14,9 +14,8 @@
 
 #define MEM_SZ        65536
 #define NUM_REGS      32
-#define PC_INDEX      1
-#define SP_INDEX      2
-#define FLAGS_INDEX   30
+#define SP_INDEX      0x02
+#define FLAGS_INDEX   0x1F
 #define ZERO_FLAG     0x4
 #define SIGN_FLAG     0x8
 #define OVERFLOW_FLAG 0x10
@@ -68,15 +67,15 @@ class LittleMaschine {
 private:
   bool      halted;
   bool      debugMsg;
+  uint32_t  pc;
   uint8_t   mainMemory[MEM_SZ];
   uint32_t  registers[NUM_REGS];
 
   uint8_t   get_actual_size(isize_t sz);
-  uint32_t  get_value(uint32_t &pc, uint8_t regAddress, uint8_t size, amode_t mode, bool ptr);
-  uint8_t*  get_dst(uint32_t& pc, uint8_t regAddress, amode_t mode, bool ptr);
+  uint8_t*  get_ptr(uint8_t regAddress, amode_t mode, bool ptr, uint8_t size = 32);
 
   uint32_t  sign_extend(uint32_t val, uint8_t sz);
-  void      set_dst(uint8_t* dst, uint8_t size, uint32_t val);
+  void      set_ptr(uint8_t* dst, uint8_t size, uint32_t val);
 
   bool      has_src(opcode_t opcode);
   bool      has_dst(opcode_t opcode);

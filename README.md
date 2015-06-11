@@ -58,15 +58,14 @@ Little Machine aims to be a small VM with an x86/MIPS-like architecture. It is a
 
 ##Registers:
     $0      Zero, Always fixed to zero (zero)
-    $1      PC, Program Counter (pc)
+    $1      AT, Used for Assembler Optimizations
     $2      SP, Stack Pointer (sp)
     $3-4    Function Result Regs (v0-v1)
     $5-8    Function Argument Regs (a0-a3)
-    $8-17   Temporary Regs, not preserved across function calls (t0-t9)
-    $18-27  Saved Regs, functions must save/restore their vals (s0-s9)
-    $28-29  Reserved for OS kernel use/exception return (k0-k1)
-    $30     Flags, see flags fmt for reference (flags)
-    $31     Reserved for pseudo-instructions (at)
+    $8-18   Temporary Regs, not preserved across function calls (t0-t9)
+    $19-28  Saved Regs, functions must save/restore their vals (s0-s9)
+    $28-30  Reserved for OS kernel use/exception return (k0-k1)
+    $31     Flags, see flags fmt for reference (flags)
 
 ##Sizes:
     byte    b   8
