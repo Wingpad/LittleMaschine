@@ -82,7 +82,7 @@ Little Machine aims to be a small VM with an x86/MIPS-like architecture. It is a
     OP-------------->  A1m-->  A2m-->  Src-------------->  Dst-------------->  Sz--->  S/U Pt1 Pt2
 
     OP      5   OPCode
-    A1m/A2m 2   Addressing Modes, 00 Register, 01 Immediate, 10 Absolute
+    A1m/A2m 2   Addressing Modes, 00 RegVal, 01 RegAddress, 10 Immediate, 11 Absolute
     Src     5   Source Register (Addressing Mode 00 Only)
     Dst     5   Destination Register (Addressing Mode 00 Only)
     Sz      2   Size, 00 byte, 01 word, 10 dword

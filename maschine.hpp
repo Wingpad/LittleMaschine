@@ -1,6 +1,7 @@
 #ifndef MASCHINE_H
 #define MASCHINE_H
 
+#include <fstream>
 #include <iostream>
 #include <iomanip>
 #include <algorithm>
@@ -20,6 +21,9 @@
 #define SIGN_FLAG     0x8
 #define OVERFLOW_FLAG 0x10
 
+#define ADDRESS_OP    0x01
+#define IMMEDIATE_OP  0x02
+
 #define DEBUG_MSG     1
 
 #define pow2(a) (0x1LL << (a))
@@ -27,7 +31,6 @@
 
 using namespace std;
 
-enum amode_t { REG_MODE, IMM_MODE, ABS_MODE, PTR_MODE };
 enum isize_t { BYTE_SZ, WORD_SZ, DWORD_SZ };
 enum opcode_t {
   HLT,
@@ -72,7 +75,7 @@ private:
   uint32_t  registers[NUM_REGS];
 
   uint8_t   get_actual_size(isize_t sz);
-  uint8_t*  get_ptr(uint8_t regAddress, amode_t mode, bool ptr, uint8_t size = 32);
+  uint8_t*  get_ptr(uint8_t regAddress, uint8_t mode, bool ptr, uint8_t size = 32);
 
   uint32_t  sign_extend(uint32_t val, uint8_t sz);
   void      set_ptr(uint8_t* dst, uint8_t size, uint32_t val);
@@ -86,6 +89,8 @@ public:
 
   void set_mem_val(uint32_t address, uint8_t val);
   void set_register_val(uint8_t address, uint32_t val);
+
+  uint8_t* get_memory();
 
   void mem_dump(uint32_t nBytes = MEM_SZ);
   void print_registers();

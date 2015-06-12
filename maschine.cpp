@@ -5,27 +5,23 @@
 #include "maschine.hpp"
 
 int main (int argc, const char* argv[]) {
+  if (argc < 2) {
+    cerr << "Usage is " << argv[0] << " <filename>" << endl;
+    return -1;
+  }
+
   cout << "******Start*****" << endl;
 
   LittleMaschine *maschine = new LittleMaschine(true);
+  ifstream infile(argv[1], ios::binary | ios::in);
 
-  // 0x09 8C 10
-  maschine->set_mem_val(0, 0x09);
-  maschine->set_mem_val(1, 0x8C);
-  maschine->set_mem_val(2, 0x10);
+  infile.seekg (0, infile.end);
+  int length = infile.tellg();
+  infile.seekg (0, infile.beg);
 
-  // 0x18 08 70
-  maschine->set_mem_val(3, 0x18);
-  maschine->set_mem_val(4, 0x08);
-  maschine->set_mem_val(5, 0x70);
+  infile.read((char*) maschine->get_memory(), length);
 
-  // 0x16 00 70
-  maschine->set_mem_val(6, 0x16);
-  maschine->set_mem_val(7, 0x00);
-  maschine->set_mem_val(8, 0x70);
-
-  maschine->set_register_val(2, 0xF000);
-  maschine->set_register_val(3, -2);
+  infile.close();
 
   maschine->mem_dump(16);
 
@@ -63,8 +59,8 @@ void LittleMaschine::start_vm() {
     uint32_t  flags   = ntohl(registers[FLAGS_INDEX]);
     uint32_t  instr   = htonl(*((uint32_t*) &mainMemory[pc])) >> 8;
     opcode_t  opcode  = (opcode_t)((instr >> 19) & 0x1F);
-    amode_t   a1m     = (amode_t)((instr >> 17) & 0x03);
-    amode_t   a2m     = (amode_t)((instr >> 15) & 0x03);
+    uint8_t   a1m     = (instr >> 17) & 0x03;
+    uint8_t   a2m     = (instr >> 15) & 0x03;
     uint8_t   srcReg  = (instr >> 10) & 0x1F;
     uint8_t   dstReg  = (instr >> 5)  & 0x1F;
     uint8_t   size    = get_actual_size((isize_t)((instr >> 3)  & 0x03));
@@ -88,10 +84,10 @@ void LittleMaschine::start_vm() {
     }
 
     if (has_dst(opcode)) {
-      if (a2m == IMM_MODE) {
+      if (a2m & IMMEDIATE_OP) {
         cerr << "Instruction cannot have an immediate destination.";
         break;
-      } else if (a2m == REG_MODE && dstReg == 0) {
+      } else if (dstReg == 0) {
         dst     = NULL;
         dstVal  = 0;
       } else {
@@ -249,6 +245,10 @@ void LittleMaschine::start_vm() {
   }
 }
 
+uint8_t* LittleMaschine::get_memory() {
+  return mainMemory;
+}
+
 uint32_t LittleMaschine::sign_extend(uint32_t val, uint8_t size) {
   // If the sign bit is high
   if (val & pow2(size - 1)) {
@@ -343,35 +343,39 @@ uint8_t LittleMaschine::get_actual_size(isize_t sz) {
   return size;
 }
 
-uint8_t* LittleMaschine::get_ptr(uint8_t regAddress, amode_t mode, bool ptr, uint8_t size) {
+uint8_t* LittleMaschine::get_ptr(uint8_t regAddress, uint8_t mode, bool ptr, uint8_t size) {
   uint32_t value;
   uint8_t* address = NULL;
 
-  switch(mode) {
-    case REG_MODE:
-      // Val := &R[RegNum]
-      address = (uint8_t*) (&registers[regAddress]);
-      break;
-    case IMM_MODE:
-      // Val := PC
-      address = &mainMemory[pc];
-      // Increment PC based on what we're reading
-      pc += (size / 8);
-      break;
-    case ABS_MODE:
-      // Val := *PC
-      value = ntohl(*((uint32_t*) &mainMemory[pc]));
-      // Address := &M[Val]
-      address = (uint8_t*) (&mainMemory[value & 0xFFFF]);
-      // Increment PC to account for Reading the Address
-      pc += 4;
-      break;
+  // If this is an address operation
+  if (mode & ADDRESS_OP) {
+    // Fix the size at 32-bits
+    size = 32;
   }
 
-  if (ptr) {
-    // Val := *Address
+  // If this is an immediate operation
+  if (mode & IMMEDIATE_OP) {
+    // Grab the immediate value's address
+    address = &mainMemory[pc];
+    // And Increment the PC based on what we're reading
+    pc += (size / 8);
+  } else {
+    // Otherwise, if it is a register address, grab the address of the register
+    address = (uint8_t*) (&registers[regAddress]);
+  }
+
+  // If it is an address operation
+  if (mode & ADDRESS_OP) {
+    // Resolve the pointer in host ordering
     value = ntohl(*((uint32_t*) address));
-    // Address := &M[Val]
+    // and use it as a pointer to main memory
+    address = (uint8_t*) (&mainMemory[value & 0xFFFF]);
+  }
+
+  // If it is a pointer
+  if (ptr) {
+    // You have to repeat this operation again
+    value = ntohl(*((uint32_t*) address));
     address = (uint8_t*) (&mainMemory[value & 0xFFFF]);
   }
 

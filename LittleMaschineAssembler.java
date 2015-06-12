@@ -2,6 +2,7 @@ import java.io.*;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedList;
 
 import org.antlr.v4.runtime.ANTLRFileStream;
 import org.antlr.v4.runtime.CommonTokenStream;
@@ -170,8 +171,38 @@ public class LittleMaschineAssembler extends LittleMaschineBaseVisitor<Object> {
     return null;
   }
 
-  public void writeBinaryFile(String outFilepath) throws IOException {
+  private void recalculateAddresses() {
+    int address = 0;
+    for (Object o : mProgram) {
+      // If the object is an identifier
+      if (o instanceof LittleMaschineIdentifier) {
+        // Set its address accordingly
+        ((LittleMaschineIdentifier) o).setAddress(address);
+        // Then add its size (in case it's a block)
+        address += ((LittleMaschineIdentifier) o).getSize();
+      } else if (o instanceof LittleMaschineStatement) {
+        // Otherwise, if it's just a statement add its calculated size
+        address += ((LittleMaschineStatement) o).calcSize();
+      }
+    }
+  }
 
+  public void writeBinaryFile(String outFilepath) throws IOException {
+    BufferedOutputStream output = new BufferedOutputStream(new FileOutputStream(outFilepath));
+    // Start by Recalculating the Addresses for Identifiers
+    recalculateAddresses();
+    ArrayList<Byte> bytes = new ArrayList<Byte>();
+    for (Object o : mProgram) {
+      if (o instanceof LittleMaschineStatement) {
+        bytes.addAll(((LittleMaschineStatement) o).getBytes());
+      }
+    }
+    byte[] data = new byte[bytes.size()];
+    for (int i = 0; i < bytes.size(); i++) {
+      data[i] = bytes.get(i).byteValue();
+    }
+    output.write(data);
+    output.close();
   }
 
   public static void main(String... args) throws IOException {
@@ -188,16 +219,18 @@ public class LittleMaschineAssembler extends LittleMaschineBaseVisitor<Object> {
       return;
     }
 
-    (new LittleMaschineAssembler(new ANTLRFileStream(inFilepath))).printProgram();
+    LittleMaschineAssembler maschine = new LittleMaschineAssembler(new ANTLRFileStream(inFilepath));
+    maschine.printProgram();
+    maschine.writeBinaryFile(outFilepath);
   }
 
   public static class LittleMaschineStatement {
     private LittleMaschineOpcode mOpcode;
-    private ArrayList<LittleMaschineOperand> mOperands;
-    private int size = 4;
+    private LinkedList<LittleMaschineOperand> mOperands;
+    private int mSize = 4;
 
     public LittleMaschineStatement() {
-      mOperands = new ArrayList<LittleMaschineOperand>();
+      mOperands = new LinkedList<LittleMaschineOperand>();
     }
 
     public void setOpcode(String opcode) {
@@ -238,17 +271,73 @@ public class LittleMaschineAssembler extends LittleMaschineBaseVisitor<Object> {
     }
 
     public void setSize(int size) {
-      this.size = size;
+      mSize = size;
     }
 
     public int calcSize() {
       int calculatedSize = 3;
 
       for (LittleMaschineOperand operand : mOperands) {
-        calculatedSize += operand.calcSize(size);
+        calculatedSize += operand.calcSize(mSize);
       }
 
       return calculatedSize;
+    }
+
+    public ArrayList<Byte> getBytes() {
+      ArrayList<Byte> bytes = new ArrayList<Byte>();
+      LittleMaschineOperand op1 = null, op2 = null;
+      byte opcode = (byte) mOpcode.opcode;
+      byte a1m = 0x3;
+      byte a2m = 0x3;
+      byte srcReg = 0x1F;
+      byte dstReg = 0x1F;
+      byte size = (byte) (mSize >> 1);
+      // TODO implement Signed/Unsigned
+      byte su = 0x1;
+      byte pt1 = 0x0, pt2 = 0x0;
+
+      if (mOpcode.hasDst()) {
+        op2 = mOperands.poll();
+        // Add all of the bytes from the op's statement
+        bytes.addAll(op2.getStatementBytes());
+        // Adjust the a1m flags
+        a2m = (byte)(((byte)(LittleMaschineUtils.toByte(!op2.isRegister()) << 1)) | LittleMaschineUtils.toByte(op2.isAddress()));
+        // Set the pointer flag
+        pt2 = LittleMaschineUtils.toByte(op2.isPointer());
+        // Finally, if it is a register, set the value accordingly
+        if (op2.isRegister()) {
+          dstReg = (byte) ((LittleMaschineRegister) op2.getValue()).address;
+        }
+      }
+
+      if (mOpcode.hasSrc()) {
+        op1 = mOperands.poll();
+        // Add all of the bytes from the op's statement
+        bytes.addAll(op1.getStatementBytes());
+        // Adjust the a1m flags
+        a1m = (byte)(((byte)(LittleMaschineUtils.toByte(!op1.isRegister()) << 1)) | LittleMaschineUtils.toByte(op1.isAddress()));
+        // Set the pointer flag
+        pt1 = LittleMaschineUtils.toByte(op1.isPointer());
+        // Finally, if it is a register, set the value accordingly
+        if (op1.isRegister()) {
+          srcReg = (byte) ((LittleMaschineRegister) op1.getValue()).address;
+        }
+      }
+
+      bytes.add((byte)((opcode << 3) | (a1m << 1) | (a2m >> 1)));
+      bytes.add((byte)((a2m << 7) | (srcReg << 2) | (dstReg >> 3)));
+      bytes.add((byte)((dstReg << 5) | (size << 3) | (su << 2) | (pt1 << 1) | pt2));
+
+      if (op1 != null) {
+        bytes.addAll(op1.getOperandBytes(mSize));
+      }
+
+      if (op2 != null) {
+        bytes.addAll(op2.getOperandBytes(mSize));
+      }
+
+      return bytes;
     }
 
     @Override
@@ -287,6 +376,61 @@ public class LittleMaschineAssembler extends LittleMaschineBaseVisitor<Object> {
         calculatedSize += statement.calcSize();
       }
       return calculatedSize;
+    }
+
+    public ArrayList<Byte> getStatementBytes() {
+      ArrayList<Byte> bytes = new ArrayList<Byte>();
+      for (LittleMaschineStatement statement : mStatements) {
+        bytes.addAll(statement.getBytes());
+      }
+      return bytes;
+    }
+
+    public ArrayList<Byte> getOperandBytes(int immSize) {
+      ArrayList<Byte> bytes = new ArrayList<Byte>();
+
+      if (isRegister()) {
+        return bytes;
+      } else if (mValue instanceof LittleMaschineIdentifier) {
+        mValue = ((LittleMaschineIdentifier) mValue).getAddress();
+      }
+
+      if (isAddress()) {
+        immSize = 4;
+      }
+
+      if (mValue instanceof String) {
+        for (int i = 0; i < immSize; i++) {
+          bytes.add((byte) ((String) mValue).charAt(i));
+        }
+      } else {
+        int value = (int) mValue;
+        for (int i = 0; i < 4; i++) {
+          byte b = (byte) ((value & 0xFF000000) >> 24);
+          if ((3 - i) < immSize) {
+            bytes.add(b);
+          }
+          value <<= 8;
+        }
+      }
+
+      return bytes;
+    }
+
+    public boolean isAddress() {
+      return mAddress;
+    }
+
+    public boolean isPointer() {
+      return mPointer;
+    }
+
+    public boolean isRegister() {
+      return (mValue instanceof LittleMaschineRegister);
+    }
+
+    public Object getValue() {
+      return mValue;
     }
 
     public void setValue(Object value) {
@@ -366,11 +510,44 @@ public class LittleMaschineAssembler extends LittleMaschineBaseVisitor<Object> {
     public boolean isVirtualOpcode() {
       return opcode == VIRTUAL_INSTR;
     }
+
+    public boolean hasSrc() {
+      switch(this) {
+        case HLT:
+        case POP:
+        case NOT:
+        case J:
+        case JE:
+        case JNE:
+        case JG:
+        case JGE:
+        case JL:
+        case JLE:
+        case RET:
+        case CALL:
+        case INT:
+          return false;
+        default:
+          return true;
+      }
+    }
+
+    public boolean hasDst() {
+      switch(this) {
+        case HLT:
+        case PUSH:
+        case RET:
+          return false;
+        default:
+          return true;
+      }
+    }
   }
 
   public static class LittleMaschineIdentifier {
     public final String name;
     private int mAddress;
+    private int mSize = 0;
 
     private static HashMap<String, LittleMaschineIdentifier> sIdentifiers;
 
@@ -388,6 +565,10 @@ public class LittleMaschineAssembler extends LittleMaschineBaseVisitor<Object> {
 
     public int getAddress() {
       return mAddress;
+    }
+
+    public int getSize() {
+      return mSize;
     }
 
     @Override

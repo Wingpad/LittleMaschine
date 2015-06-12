@@ -2,6 +2,10 @@ import org.antlr.v4.runtime.tree.TerminalNode;
 
 public class LittleMaschineUtils {
 
+  public static byte toByte(boolean bool) {
+    return (byte) (bool ? 1 : 0);
+  }
+
   public static Object parseLiteral(TerminalNode node) {
     String text = node.getText();
 
