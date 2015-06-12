@@ -1,8 +1,11 @@
 import java.io.*;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.HashMap;
 
 import org.antlr.v4.runtime.ANTLRFileStream;
 import org.antlr.v4.runtime.CommonTokenStream;
+import org.antlr.v4.runtime.ParserRuleContext;
 import org.antlr.v4.runtime.tree.ParseTree;
 
 public class LittleMaschineAssembler extends LittleMaschineBaseVisitor<Object> {
@@ -44,22 +47,54 @@ public class LittleMaschineAssembler extends LittleMaschineBaseVisitor<Object> {
     if (ctx.Register() != null) {
       operand.setValue(LittleMaschineRegister.getEnum(ctx.Register().toString()));
     } else if (ctx.Literal() != null) {
-      operand.setValue(ctx.Literal().toString());
+      operand.setValue(LittleMaschineUtils.parseLiteral(ctx.Literal()));
     } else if (ctx.Identifier() != null) {
-      operand.setValue(ctx.Identifier().toString());
+      operand.setValue(LittleMaschineIdentifier.get(ctx.Identifier().toString()));
     }
     return operand;
   }
 
-  public void printProgram() {
-    for (Object o : mProgram) {
-      System.out.println(o);
+  public void adjustSize(ParserRuleContext ctx) {
+    Object sizeSpecifier;
+    try {
+      Method method = ctx.getClass().getDeclaredMethod("SizeSpecifier");
+      sizeSpecifier = method.invoke(ctx);
+    } catch (Exception e) {
+      sizeSpecifier = null;
+    }
+
+    if (sizeSpecifier != null) {
+      char size = sizeSpecifier.toString().charAt(0);
+
+      switch (size) {
+        case 'b':
+          mCurrentStatement.setSize(1);
+          break;
+        case 'w':
+          mCurrentStatement.setSize(2);
+          break;
+        case 'd':
+          mCurrentStatement.setSize(4);
+          break;
+      }
     }
   }
 
-  @Override public Object visitLabel(LittleMaschineParser.LabelContext ctx) {
+  public void printProgram() {
+    int address = 0;
+    for (Object o : mProgram) {
+      System.out.println(String.format("%04X : %s", address, o));
+
+      if (o instanceof LittleMaschineStatement) {
+        address += ((LittleMaschineStatement) o).calcSize();
+      }
+    }
+  }
+
+  @Override
+  public Object visitLabel(LittleMaschineParser.LabelContext ctx) {
     // Simply add the label to the program
-    mProgram.add(ctx.Identifier().toString());
+    mProgram.add(LittleMaschineIdentifier.get(ctx.Identifier().toString()));
     return null;
   }
 
@@ -79,22 +114,34 @@ public class LittleMaschineAssembler extends LittleMaschineBaseVisitor<Object> {
   public Object visitNoOperandInstr(LittleMaschineParser.NoOperandInstrContext ctx) {
     // Set the opcode
     mCurrentStatement.setOpcode(ctx.NoOperandOpcode().toString());
-    // then return null
+    // Adjust the size
+    adjustSize(ctx);
+    // Then return null
     return null;
   }
 
   @Override
   public Object visitSingleOperandInstr(LittleMaschineParser.SingleOperandInstrContext ctx) {
+    // Adjust the size
+    adjustSize(ctx);
+    // Visit the kids
+    visitChildren(ctx);
     // Set the opcode
     mCurrentStatement.setOpcode(ctx.SingleOperandOpcode().toString());
-    return visitChildren(ctx);
+    // Then return null
+    return null;
   }
 
   @Override
   public Object visitDualOperandInstr(LittleMaschineParser.DualOperandInstrContext ctx) {
+    // Adjust the size
+    adjustSize(ctx);
+    // Visit the kids
+    visitChildren(ctx);
     // Set the opcode
     mCurrentStatement.setOpcode(ctx.DualOperandOpcode().toString());
-    return visitChildren(ctx);
+    // Then return null
+    return null;
   }
 
   @Override
@@ -144,9 +191,10 @@ public class LittleMaschineAssembler extends LittleMaschineBaseVisitor<Object> {
     (new LittleMaschineAssembler(new ANTLRFileStream(inFilepath))).printProgram();
   }
 
-  public class LittleMaschineStatement {
+  public static class LittleMaschineStatement {
     private LittleMaschineOpcode mOpcode;
     private ArrayList<LittleMaschineOperand> mOperands;
+    private int size = 4;
 
     public LittleMaschineStatement() {
       mOperands = new ArrayList<LittleMaschineOperand>();
@@ -154,10 +202,53 @@ public class LittleMaschineAssembler extends LittleMaschineBaseVisitor<Object> {
 
     public void setOpcode(String opcode) {
       mOpcode = LittleMaschineOpcode.valueOf(opcode.toUpperCase());
+
+      if (mOpcode.isVirtualOpcode()) {
+        LittleMaschineOperand operand = null;
+
+        switch(mOpcode) {
+          case INC:
+            mOpcode = LittleMaschineOpcode.ADD;
+            operand = new LittleMaschineOperand();
+            operand.setValue(1);
+            break;
+          case DEC:
+            mOpcode = LittleMaschineOpcode.SUB;
+            operand = new LittleMaschineOperand();
+            operand.setValue(1);
+            break;
+          case NOP:
+            operand = new LittleMaschineOperand();
+            operand.setValue(LittleMaschineRegister.ZERO);
+            addOperand(operand);
+            // NOTE this is intentionally falling through!
+          case CLR:
+            mOpcode = LittleMaschineOpcode.XOR;
+            operand = mOperands.get(0);
+            break;
+        }
+
+        addOperand(operand);
+      }
     }
 
     public boolean addOperand(LittleMaschineOperand operand) {
-      return mOperands.add(operand);
+      if (operand == null) return false;
+      else return mOperands.add(operand);
+    }
+
+    public void setSize(int size) {
+      this.size = size;
+    }
+
+    public int calcSize() {
+      int calculatedSize = 3;
+
+      for (LittleMaschineOperand operand : mOperands) {
+        calculatedSize += operand.calcSize(size);
+      }
+
+      return calculatedSize;
     }
 
     @Override
@@ -166,7 +257,7 @@ public class LittleMaschineAssembler extends LittleMaschineBaseVisitor<Object> {
     }
   }
 
-  public class LittleMaschineOperand {
+  public static class LittleMaschineOperand {
     private boolean mAddress;
     private boolean mPointer;
 
@@ -175,6 +266,27 @@ public class LittleMaschineAssembler extends LittleMaschineBaseVisitor<Object> {
 
     public LittleMaschineOperand() {
       mStatements = new ArrayList<LittleMaschineStatement>();
+    }
+
+    public int calcSize(int immSize) {
+      int calculatedSize;
+      // If the operand is a register
+      if (mValue instanceof LittleMaschineRegister) {
+        // We start with no penalty
+        calculatedSize = 0;
+      } else if (mAddress) {
+        // If it's address we incur 4 bytes
+        calculatedSize = 4;
+      } else {
+        // otherwise, it's an immediate so we incur X bytes
+        calculatedSize = immSize;
+      }
+      // Then for each of the statements tagging along
+      for (LittleMaschineStatement statement : mStatements) {
+        // Add their calculatedSize
+        calculatedSize += statement.calcSize();
+      }
+      return calculatedSize;
     }
 
     public void setValue(Object value) {
@@ -196,7 +308,7 @@ public class LittleMaschineAssembler extends LittleMaschineBaseVisitor<Object> {
     }
   }
 
-  public enum LittleMaschineRegister {
+  public static enum LittleMaschineRegister {
 
     ZERO(0x00), AT(0x01), SP(0x02),
     V0(0x03), V1(0x04),
@@ -221,7 +333,7 @@ public class LittleMaschineAssembler extends LittleMaschineBaseVisitor<Object> {
         // Grab everything except for the '$'
         str = str.substring(1, str.length());
         // And check if it is an Integer
-        if ((i = tryParse(str)) != null) {
+        if ((i = LittleMaschineUtils.tryParseInt(str)) != null) {
           // If it is, find the appropriate enum
           for (LittleMaschineRegister reg : values()) {
             if (i.equals(reg.address)) {
@@ -233,20 +345,9 @@ public class LittleMaschineAssembler extends LittleMaschineBaseVisitor<Object> {
       // Otherwise, hand it off to the default valueOf function
       return valueOf(str.toUpperCase());
     }
-
-    public static Integer tryParse(String str)
-    {
-      Integer i;
-      try {
-        i = Integer.parseInt(str);
-      } catch(NumberFormatException nfe) {
-        return null;
-      }
-      return i;
-    }
   }
 
-  public enum LittleMaschineOpcode {
+  public static enum LittleMaschineOpcode {
 
     PUSH(0x01), POP(0x02), ADD(0x03), SUB(0x04), MUL(0x05), DIV(0x06), MOD(0x07),
       SHL(0x08), SHR(0x09), MOV(0x0A), XCHG(0x0B), AND(0x0C), OR(0x0D), XOR(0x0E),
@@ -260,6 +361,46 @@ public class LittleMaschineAssembler extends LittleMaschineBaseVisitor<Object> {
 
     private LittleMaschineOpcode(int opcode) {
       this.opcode = opcode;
+    }
+
+    public boolean isVirtualOpcode() {
+      return opcode == VIRTUAL_INSTR;
+    }
+  }
+
+  public static class LittleMaschineIdentifier {
+    public final String name;
+    private int mAddress;
+
+    private static HashMap<String, LittleMaschineIdentifier> sIdentifiers;
+
+    static {
+      sIdentifiers = new HashMap<String, LittleMaschineIdentifier>();
+    }
+
+    private LittleMaschineIdentifier(String name) {
+      this.name = name;
+    }
+
+    public void setAddress(int address) {
+      mAddress = address;
+    }
+
+    public int getAddress() {
+      return mAddress;
+    }
+
+    @Override
+    public String toString() {
+      return name;
+    }
+
+    public static LittleMaschineIdentifier get(String name) {
+      if (!sIdentifiers.containsKey(name)) {
+        sIdentifiers.put(name, new LittleMaschineIdentifier(name));
+      }
+
+      return sIdentifiers.get(name);
     }
   }
 }
