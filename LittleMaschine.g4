@@ -1,50 +1,55 @@
 /**
- * Grammar for the LVM Machine
- */
+* Grammar for the LVM Machine
+*/
 grammar LittleMaschine;
 
 program
-  : ((label EOL?)* statement (EOL | EOF))+
-  ;
+: ((label EOL?)* statement (EOL | EOF))+
+;
 
 label
-  : Identifier Colon
-  ;
+: Identifier Colon
+;
 
 statement
-  : singleOperandInstr
-  | dualOperandInstr
-  | noOperandInstr
-  ;
+: singleOperandInstr
+| dualOperandInstr
+| noOperandInstr
+;
 
 noOperandInstr
-  : NoOperandOpcode
-  ;
+: NoOperandOpcode
+;
 
 singleOperandInstr
-  : SingleOperandOpcode (Period SizeSpecifier)? operand
-  ;
+: SingleOperandOpcode (Period SizeSpecifier)? operand
+;
 
 dualOperandInstr
-  : DualOperandOpcode (Period SizeSpecifier)? operand Comma operand
-  ;
+: DualOperandOpcode (Period SizeSpecifier)? operand Comma operand
+;
 
 operand
-  : ( Register
-    | Identifier
-    | Literal
-    )
-  | addressExpression
-  ;
+: ( Register
+  | Identifier
+  | Literal
+  )
+| addressExpression
+;
 
 addressExpression
-  : Pointer? LBracket expression RBracket
-  ;
+: Pointer? LBracket expression RBracket
+;
 
 expression
-  : operand
-  | expression (Add | Subtract | Multiply) operand
-  ;
+: operand (Sign operand)*
+;
+
+Sign
+: Add
+| Multiply
+| Subtract
+;
 
 LBracket: '[';
 RBracket: ']';
@@ -57,18 +62,18 @@ Comma:    ',';
 Dollar:   '$';
 
 SizeSpecifier
-  : 'dw'
-  | [wb]
-  ;
+: 'dw'
+| [wb]
+;
 
 Literal
-  : Hex
-  | Binary
-  | Octal
-  | Integer
-  | String
-  | Char
-  ;
+: Hex
+| Binary
+| Octal
+| Integer
+| String
+| Char
+;
 
 Integer: [1-9] [0-9]* ;
 HexDigit: [0-9a-fA-F] ;
@@ -80,70 +85,70 @@ String: '"' ( ~'"' | '\\' '"' )* '"' ;
 Char: '\'' ( ~'\'' | '\\' ~[\s] ) '\'' ;
 
 Pointer
-  : 'ptr'
-  | '^'
-  ;
+: 'ptr'
+| '^'
+;
 
 DualOperandOpcode
-  : 'add'
-  | 'sub'
-  | 'mul'
-  | 'div'
-  | 'mod'
-  | 'shl'
-  | 'shr'
-  | 'mov'
-  | 'xchg'
-  | 'and'
-  | 'or'
-  | 'xor'
-  | 'nand'
-  | 'nor'
-  | 'xnor'
-  | 'cmp'
-  | 'lea'
-  ;
+: 'add'
+| 'sub'
+| 'mul'
+| 'div'
+| 'mod'
+| 'shl'
+| 'shr'
+| 'mov'
+| 'xchg'
+| 'and'
+| 'or'
+| 'xor'
+| 'nand'
+| 'nor'
+| 'xnor'
+| 'cmp'
+| 'lea'
+;
 
 SingleOperandOpcode
-  : 'pop'
-  | 'push'
-  | 'clr'
-  | 'inc'
-  | 'dec'
-  | 'not'
-  | 'j'
-  | 'je'
-  | 'jne'
-  | 'jg'
-  | 'jge'
-  | 'jl'
-  | 'jle'
-  | 'call'
-  | 'int'
-  ;
+: 'pop'
+| 'push'
+| 'clr'
+| 'inc'
+| 'dec'
+| 'not'
+| 'j'
+| 'je'
+| 'jne'
+| 'jg'
+| 'jge'
+| 'jl'
+| 'jle'
+| 'call'
+| 'int'
+;
 
 NoOperandOpcode
-  : 'hlt'
-  | 'nop'
-  | 'ret'
-  ;
+: 'hlt'
+| 'nop'
+| 'ret'
+;
 
 Register
-  : Dollar [a-zA-Z0-9]+
-  ;
+: Dollar [a-zA-Z0-9]+
+;
 
 Identifier
-  : [_a-zA-Z] [_a-zA-Z0-9]*
-  ;
+: [_a-zA-Z] [_a-zA-Z0-9]*
+;
 
 EOL
-  : '\r'? '\n'
-  ;
+: '\r'? '\n'
+;
 
 Comment
-  : ';' ~[\r\n]* -> skip
-  ;
+: ';' ~[\r\n]* -> skip
+;
 
 Whitespace
-  : [ \t] -> skip
-  ;
+: [ \t] -> skip
+;

@@ -21,10 +21,46 @@ public class LittleMaschineAssembler extends LittleMaschineBaseVisitor<Object> {
     this.visit(tree);
   }
 
+  public Object addOperand(LittleMaschineParser.OperandContext ctx) {
+    return addOperand(ctx, mCurrentStatement);
+  }
+
+  public Object addOperand(LittleMaschineParser.OperandContext ctx, LittleMaschineStatement statement) {
+    LittleMaschineOperand operand;
+    // If the operand is not an Address Expression
+    if (ctx.addressExpression() == null) {
+      // Simply create a basic operand based on the context
+      operand = createBasicOperand(ctx);
+      // and add it to the statement
+      statement.addOperand(operand);
+    }
+    // Otherwise, visit the Address Expression
+    return visitChildren(ctx);
+  }
+
+  public LittleMaschineOperand createBasicOperand(LittleMaschineParser.OperandContext ctx) {
+    LittleMaschineOperand operand = new LittleMaschineOperand();
+    // Handle each "simple" type of operand, accordingly
+    if (ctx.Register() != null) {
+      operand.setValue(LittleMaschineRegister.getEnum(ctx.Register().toString()));
+    } else if (ctx.Literal() != null) {
+      operand.setValue(ctx.Literal().toString());
+    } else if (ctx.Identifier() != null) {
+      operand.setValue(ctx.Identifier().toString());
+    }
+    return operand;
+  }
+
   public void printProgram() {
     for (Object o : mProgram) {
       System.out.println(o);
     }
+  }
+
+  @Override public Object visitLabel(LittleMaschineParser.LabelContext ctx) {
+    // Simply add the label to the program
+    mProgram.add(ctx.Identifier().toString());
+    return null;
   }
 
   @Override
@@ -63,27 +99,27 @@ public class LittleMaschineAssembler extends LittleMaschineBaseVisitor<Object> {
 
   @Override
   public Object visitOperand(LittleMaschineParser.OperandContext ctx) {
-    LittleMaschineOperand operand;
-
-    if (ctx.Register() != null) {
-      operand = new LittleMaschineOperand();
-      operand.setValue(LittleMaschineRegister.getEnum(ctx.Register().toString()));
-      mCurrentStatement.addOperand(operand);
-    } else if (ctx.Literal() != null) {
-      operand = new LittleMaschineOperand();
-      operand.setValue(ctx.Literal().toString());
-      mCurrentStatement.addOperand(operand);
-    } else if (ctx.Identifier() != null) {
-      operand = new LittleMaschineOperand();
-      operand.setValue(ctx.Identifier().toString());
-      mCurrentStatement.addOperand(operand);
-    }
-
-    return visitChildren(ctx);
+    return addOperand(ctx);
   }
 
   @Override
   public Object visitAddressExpression(LittleMaschineParser.AddressExpressionContext ctx) {
+    // Grab the context's expression
+    LittleMaschineParser.ExpressionContext expression = ctx.expression();
+    LittleMaschineOperand operand;
+    // If there is only one child
+    if (expression.getChildCount() == 1) {
+      // Simply use it's value as the context
+      operand = createBasicOperand(expression.operand(0));
+      // Setting its addressing accordingly
+      operand.setAddressingMode(true, ctx.Pointer() != null);
+      // And adding it to the statement
+      mCurrentStatement.addOperand(operand);
+    } else {
+      // Otherwise more complex logic is needed...
+      System.out.println("WARNING: Expressions are not yet supported.");
+    }
+    // We don't need to visit any of the kids
     return null;
   }
 
@@ -161,6 +197,7 @@ public class LittleMaschineAssembler extends LittleMaschineBaseVisitor<Object> {
   }
 
   public enum LittleMaschineRegister {
+
     ZERO(0x00), AT(0x01), SP(0x02),
     V0(0x03), V1(0x04),
     A0(0x05), A1(0x06), A2(0x07), A3(0x08),
@@ -179,11 +216,13 @@ public class LittleMaschineAssembler extends LittleMaschineBaseVisitor<Object> {
 
     public static LittleMaschineRegister getEnum(String str) {
       Integer i;
-
+      // If it is a Register string
       if (str.startsWith("$")) {
+        // Grab everything except for the '$'
         str = str.substring(1, str.length());
-
+        // And check if it is an Integer
         if ((i = tryParse(str)) != null) {
+          // If it is, find the appropriate enum
           for (LittleMaschineRegister reg : values()) {
             if (i.equals(reg.address)) {
               return reg;
@@ -191,7 +230,7 @@ public class LittleMaschineAssembler extends LittleMaschineBaseVisitor<Object> {
           }
         }
       }
-
+      // Otherwise, hand it off to the default valueOf function
       return valueOf(str.toUpperCase());
     }
 
