@@ -23,7 +23,7 @@ int main (int argc, const char* argv[]) {
 
   infile.close();
 
-  maschine->mem_dump(16);
+  maschine->mem_dump(length);
 
   maschine->start_vm();
 
@@ -275,7 +275,7 @@ void LittleMaschine::mem_dump(uint32_t nBytes) {
   for (int i = 0; i < nBytes; i++) {
     cout << setfill('0') << setw(2) << hex << (int) mainMemory[i] << " ";
 
-    if (((i + 1) % 8) == 0 && i != 0) {
+    if ((((i + 1) % 8) == 0 && i != 0) || (i == (nBytes - 1))) {
       cout << endl;
     }
   }
