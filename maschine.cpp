@@ -84,7 +84,7 @@ void LittleMaschine::start_vm() {
     }
 
     if (has_dst(opcode)) {
-      if (a2m & IMMEDIATE_OP) {
+      if ((a2m & IMMEDIATE_OP) && writes_back(opcode)) {
         cerr << "Instruction cannot have an immediate destination.";
         break;
       } else if (dstReg == 0) {
@@ -220,7 +220,7 @@ void LittleMaschine::start_vm() {
         // Grab the SP
         uint32_t sp = ntohl(registers[SP_INDEX]);
         // Push it the PC onto the Stack
-        set_ptr(&mainMemory[sp], 4, ntohl(pc));
+        set_ptr(&mainMemory[sp], 32, ntohl(pc));
         // Adjust the SP
         registers[SP_INDEX] = htonl(sp + 4);
         // Then move the PC to the destination
@@ -234,7 +234,7 @@ void LittleMaschine::start_vm() {
         break;
       }
       case CMP:
-        registers[FLAGS_INDEX] = ((srcVal == dstVal) | (srcVal > dstVal) << 1);
+        registers[FLAGS_INDEX] = htonl(((srcVal == dstVal) | (srcVal > dstVal) << 1));
         break;
       case LEA:
       case INTERRUPT:
@@ -270,12 +270,12 @@ void LittleMaschine::print_registers() {
   cout << endl;
 }
 
-void LittleMaschine::mem_dump(uint32_t nBytes) {
+void LittleMaschine::mem_dump(const uint32_t nBytes, const uint32_t offset) {
   cout << "Memory:" << endl;
-  for (int i = 0; i < nBytes; i++) {
+  for (int i = offset; i < (nBytes + offset); i++) {
     cout << setfill('0') << setw(2) << hex << (int) mainMemory[i] << " ";
 
-    if ((((i + 1) % 8) == 0 && i != 0) || (i == (nBytes - 1))) {
+    if ((((i + 1) % 8) == 0 && i != 0) || (i == (nBytes + offset - 1))) {
       cout << endl;
     }
   }
@@ -302,6 +302,30 @@ bool LittleMaschine::has_src(opcode_t opcode) {
       break;
     default:
       result = true;
+      break;
+  }
+
+  return result;
+}
+
+bool LittleMaschine::writes_back(opcode_t opcode) {
+  bool result;
+
+  switch(opcode) {
+    case J:
+    case JE:
+    case JNE:
+    case JG:
+    case JGE:
+    case JL:
+    case JLE:
+    case RET:
+    case CALL:
+    case INTERRUPT:
+      result = false;
+      break;
+    default:
+      result = has_dst(opcode);
       break;
   }
 

@@ -82,6 +82,7 @@ private:
 
   bool      has_src(opcode_t opcode);
   bool      has_dst(opcode_t opcode);
+  bool      writes_back(opcode_t opcode);
 public:
   LittleMaschine(bool debugMsg = false);
 
@@ -92,7 +93,7 @@ public:
 
   uint8_t* get_memory();
 
-  void mem_dump(uint32_t nBytes = MEM_SZ);
+  void mem_dump(uint32_t nBytes, uint32_t offset = 0);
   void print_registers();
 };
 
