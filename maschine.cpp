@@ -10,9 +10,8 @@ int main (int argc, const char* argv[]) {
     return -1;
   }
 
-  cout << "******Start*****" << endl;
-
-  LittleMaschine *maschine = new LittleMaschine(true);
+  bool debugMsg = false;
+  LittleMaschine *maschine = new LittleMaschine(debugMsg);
   ifstream infile(argv[1], ios::binary | ios::in);
 
   infile.seekg (0, infile.end);
@@ -23,13 +22,18 @@ int main (int argc, const char* argv[]) {
 
   infile.close();
 
-  maschine->mem_dump(length);
+  if (debugMsg) {
+    cout << "******Start*****" << endl;
+    maschine->mem_dump(length);
+  }
 
   maschine->start_vm();
 
   delete maschine;
 
-  cout << "*****Finish*****" << endl;
+  if (debugMsg) {
+    cout << "*****Finish*****" << endl;
+  }
 
   return 0;
 }
@@ -76,27 +80,19 @@ void LittleMaschine::start_vm() {
 
     if (has_src(opcode)) {
       src     = get_ptr(srcReg, a1m, ptr1, size);
-      srcVal  = htonl(*((uint32_t*)src)) & size_mask(size);
-
-      if (signOp) {
-        srcVal = sign_extend(srcVal, size);
-      }
+      srcVal  = resolve_ptr(src, (a1m & ADDRESS_OP) ? 32 : size, signOp);
     }
 
     if (has_dst(opcode)) {
-      if ((a2m & IMMEDIATE_OP) && writes_back(opcode)) {
+      if ((a2m & IMMEDIATE_OP) && !(a2m & ADDRESS_OP) && writes_back(opcode)) {
         cerr << "Instruction cannot have an immediate destination.";
         break;
-      } else if (dstReg == 0) {
+      } else if (!(a2m & IMMEDIATE_OP) && (dstReg == 0)) {
         dst     = NULL;
         dstVal  = 0;
       } else {
         dst     = get_ptr(dstReg, a2m, ptr2);
-        dstVal  = htonl(*((uint32_t*)dst)) & size_mask(size);
-      }
-
-      if (signOp) {
-        dstVal = sign_extend(dstVal, size);
+        dstVal  = resolve_ptr(dst, (a2m & ADDRESS_OP) ? 32 : size, signOp);
       }
     }
 
@@ -217,14 +213,8 @@ void LittleMaschine::start_vm() {
         }
         break;
       case CALL: {
-        // Grab the SP
-        uint32_t sp = ntohl(registers[SP_INDEX]);
-        // Push it the PC onto the Stack
-        set_ptr(&mainMemory[sp], 32, ntohl(pc));
-        // Adjust the SP
-        registers[SP_INDEX] = htonl(sp + 4);
-        // Then move the PC to the destination
-        pc = dstVal;
+        // Save the PC and Jump to the Destination
+        push_pc_and_jump(dstVal);
         break;
       }
       case RET: {
@@ -236,13 +226,78 @@ void LittleMaschine::start_vm() {
       case CMP:
         registers[FLAGS_INDEX] = htonl(((srcVal == dstVal) | (srcVal > dstVal) << 1));
         break;
-      case LEA:
       case INTERRUPT:
+        handle_interrupt(dstVal);
+        break;
+      case LEA:
+        break;
       default:
         cerr << "Unsupported Instruction." << endl;
         break;
     }
   }
+}
+
+void LittleMaschine::handle_interrupt(uint32_t entry) {
+  // If this is not the system interrupt
+  if (entry != SYS_INTERRUPT) {
+    // Grab the address of the handler
+    uint32_t hndlrAddr = *((uint32_t*) (&mainMemory[INTERRUPT_TABLE])) + (entry * 4);
+    // Save the PC and Jump to the Handler
+    push_pc_and_jump(hndlrAddr);
+  } else {
+    // Otherwise, grab A0
+    syscall_t which = (syscall_t) ntohl(registers[REG_A0]);
+    // And Switch to handle the syscall accordingly
+    switch (which) {
+      case STRING_LENGTH:
+        break;
+      case STRING_COMPARE:
+        break;
+      case READ_CHAR: {
+        // Read a character
+        char c;
+        cin >> c;
+        // And set the lower 8-bits of Reg V0 to the value
+        set_ptr((uint8_t*) &registers[REG_V0], 8, c);
+        break;
+      }
+      case WRITE_CHAR: {
+        // Grab the character from A1
+        char c = registers[REG_A1] & size_mask(8);
+        // And write it to the output stream
+        cout << c;
+        break;
+      }
+      case WRITE_STRING: {
+        // Grab the string, using the value of Reg A1 as an Address
+        const char* s = (const char*) get_ptr(REG_A1, ADDRESS_OP, false, 8);
+        // Write the string to the output stream
+        cout << s;
+        break;
+      }
+      case WRITE_LINE: {
+        // Grab the string, using the value of Reg A1 as an Address
+        const char* s = (const char*) get_ptr(REG_A1, ADDRESS_OP, false, 8);
+        // Write the string to the output stream (with an endl)
+        cout << s << endl;
+        break;
+      }
+      default:
+        break;
+    }
+  }
+}
+
+void LittleMaschine::push_pc_and_jump(uint32_t newPc) {
+  // Grab the SP
+  uint32_t sp = ntohl(registers[SP_INDEX]);
+  // Push it the PC onto the Stack
+  set_ptr(&mainMemory[sp], 32, ntohl(pc));
+  // Adjust the SP
+  registers[SP_INDEX] = htonl(sp + 4);
+  // Then move the PC to the destination
+  pc = newPc;
 }
 
 uint8_t* LittleMaschine::get_memory() {
@@ -312,6 +367,7 @@ bool LittleMaschine::writes_back(opcode_t opcode) {
   bool result;
 
   switch(opcode) {
+    case CMP:
     case J:
     case JE:
     case JNE:
@@ -406,10 +462,50 @@ uint8_t* LittleMaschine::get_ptr(uint8_t regAddress, uint8_t mode, bool ptr, uin
   return address;
 }
 
-void LittleMaschine::set_ptr(uint8_t* dst, uint8_t size, uint32_t val) {
-  if (dst != NULL) {
-    val &= size_mask(size);
-    val |= ntohl(*((uint32_t*)dst)) & ((size_mask(32 - size)) << size);
-    *((uint32_t*)dst) = htonl(val);
+void LittleMaschine::set_ptr(uint8_t* dst, uint8_t size, uint32_t value) {
+  if (dst == NULL) {
+    return;
   }
+
+  value &= size_mask(size);
+
+  switch (size) {
+    case 8:
+      *dst = value;
+      break;
+    case 16:
+      *((uint16_t*)dst) = htons(value);
+      break;
+    case 32:
+      *((uint32_t*)dst) = htonl(value);
+      break;
+  }
+
+  // cout << "Storing value: " << hex << value << endl;
+}
+
+uint32_t LittleMaschine::resolve_ptr(uint8_t* ptr, uint8_t size, bool signOp) {
+  uint32_t value;
+
+  switch (size) {
+    case 8:
+      value = *ptr;
+      break;
+    case 16:
+      value = ntohs(*((uint16_t*)ptr));
+      break;
+    case 32:
+      value = ntohl(*((uint32_t*)ptr));
+      break;
+  }
+
+  if (signOp) {
+    value = sign_extend(value, size);
+  } else {
+    value &= size_mask(size);
+  }
+
+  // cout << "Fetching value: " << hex << value << endl;
+
+  return value;
 }

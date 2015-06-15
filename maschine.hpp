@@ -26,12 +26,31 @@
 
 #define DEBUG_MSG     1
 
+#define REG_A0          0x05
+#define REG_A1          0x06
+#define REG_A2          0x07
+
+#define REG_V0          0x03
+
+#define SYS_INTERRUPT   0x0000
+#define INTERRUPT_TABLE 0xFF7F
+
 #define pow2(a) (0x1LL << (a))
 #define size_mask(a) (pow2(a) - 1)
 
 using namespace std;
 
 enum isize_t { BYTE_SZ, WORD_SZ, DWORD_SZ };
+enum syscall_t {
+  STRING_LENGTH,
+  STRING_COMPARE,
+  READ_CHAR,
+  READ_LINE,
+  WRITE_CHAR,
+  WRITE_STRING,
+  WRITE_LINE,
+};
+
 enum opcode_t {
   HLT,
   PUSH,
@@ -77,12 +96,17 @@ private:
   uint8_t   get_actual_size(isize_t sz);
   uint8_t*  get_ptr(uint8_t regAddress, uint8_t mode, bool ptr, uint8_t size = 32);
 
+  uint32_t  resolve_ptr(uint8_t* ptr, uint8_t size, bool signOp);
+
   uint32_t  sign_extend(uint32_t val, uint8_t sz);
   void      set_ptr(uint8_t* dst, uint8_t size, uint32_t val);
 
   bool      has_src(opcode_t opcode);
   bool      has_dst(opcode_t opcode);
   bool      writes_back(opcode_t opcode);
+  void      push_pc_and_jump(uint32_t newPc);
+
+  void      handle_interrupt(uint32_t entry);
 public:
   LittleMaschine(bool debugMsg = false);
 

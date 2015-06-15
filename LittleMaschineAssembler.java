@@ -400,8 +400,12 @@ public class LittleMaschineAssembler extends LittleMaschineBaseVisitor<Object> {
       }
 
       if (mValue instanceof String) {
-        for (int i = 0; i < immSize; i++) {
-          bytes.add((byte) ((String) mValue).charAt(i));
+        for (int i = 0; (i < immSize); i++) {
+          if (i < ((String) mValue).length()) {
+            bytes.add((byte) ((String) mValue).charAt(i));
+          } else {
+            bytes.add((byte) 0x0);
+          }
         }
       } else {
         int value = (int) mValue;
